@@ -13,7 +13,6 @@ This function can be used with automation services like IFTTT to post images wit
 
 - `function` - The Lambda function.
 - `template.yml` - An AWS CloudFormation template that creates an application.
-- `1-create-bucket.sh`, `2-deploy.sh`, etc. - Shell scripts that use the AWS CLI to deploy and manage the application.
 
 Use the following instructions to deploy the sample application.
 
@@ -52,16 +51,15 @@ Install dependencies.
     $ npm install
     $ cd ..
 
-To create a new bucket for deployment artifacts, run `1-create-bucket.sh`.
+To create a new bucket for deployment artifacts, run `make createbucket`.
 
-    mastodon-post$ ./1-create-bucket.sh
-    make_bucket: lambda-artifacts-a5e491dbb5b22e0d
+    mastodon-post$ make createbucket
 
 # Deploy
 
-To deploy the application, run `2-deploy.sh`.
+To deploy the application, run `make deploy`.
 
-    mastodon-post$ ./2-deploy.sh
+    mastodon-post$ make deploy
     added 16 packages from 18 contributors and audited 18 packages in 0.926s
     added 17 packages from 19 contributors and audited 19 packages in 0.916s
     Uploading to e678bc216e6a0d510d661ca9ae2fd941  2737254 / 2737254.0  (100.00%)
@@ -70,16 +68,15 @@ To deploy the application, run `2-deploy.sh`.
     Waiting for stack create/update to complete
     Successfully created/updated stack - mastodon-post
 
-This script uses AWS CloudFormation to deploy the Lambda functions and an IAM role. If the AWS CloudFormation stack that contains the resources already exists, the script updates it with any changes to the template or function code.
+The make target uses AWS CloudFormation to deploy the Lambda functions and an IAM role. If the AWS CloudFormation stack that contains the resources already exists, the script updates it with any changes to the template or function code.
 
 # Test
 
-To invoke the function with the REST API, run the `4-get.sh` script. This script uses cURL to send a GET request to the API endpoint. Make sure you update the argument values given in the script.
+To invoke the function with the REST API, run the `test` make target. This target uses cURL to send a GET request to the API endpoint. Make sure you update the argument values given in `testrequest.json`.
 
 You can also run the function locally using AWS SAM. Details can be found in the launch configuration in the .vscode folder. Refer also to the [AWS SAM documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-using-debugging.html).
 
-**Note:** if using Fedora and want to debug using AWS SAM, you need to disable selinux for docker to work properly. See
-https://github.com/aws/aws-sam-cli/issues/2360 for details.
+**Note:** if using Fedora and want to debug using AWS SAM, you need to disable selinux for docker to work properly. See https://github.com/aws/aws-sam-cli/issues/2360 for details.
 
 Finally, view the application in the Lambda console.
 
