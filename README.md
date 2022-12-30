@@ -5,6 +5,10 @@ This is a simple AWS Lambda function that posts an image with caption to Mastodo
 
 This function can be used with automation services like IFTTT to post images with caption to Mastodon, enabling easy crossposing from Twitter or Instagram.
 
+ Copyright (c) 2022 Michael Kleinhenz <michael@kleinhenz.net>.
+ 
+ Licensed under the MIT License.
+
 # Contents
 
 - `function` - The Lambda function.

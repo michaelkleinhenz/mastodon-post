@@ -1,0 +1,6 @@
+{
+    "mastodonhost":"https://bonn.social",
+    "token":"YOUR_TOKEN",
+    "caption":"YOUR_CAPTION",
+    "imgurl":"https://nodejs.org/static/legacy/images/logo.png"
+}

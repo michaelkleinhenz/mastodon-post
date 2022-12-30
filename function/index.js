@@ -1,3 +1,9 @@
+/*
+ * This function is used to post an image to a mastodon instance.
+ * Copyright (c) 2022 Michael Kleinhenz <michael@kleinhenz.net>.
+ * Licensed under the MIT License.
+ */
+
 const FormData = require('form-data');
 const axios = require('axios');
 
