@@ -1,0 +1,26 @@
+{
+    "configurations": [
+        {
+            "name": "HTTP",
+            "type": "aws-sam",
+            "request": "direct-invoke",
+            "invokeTarget": {
+                "target": "api",
+                "templatePath": "${workspaceFolder}/template.yml",
+                "logicalId": "function"
+            },
+            "api": {
+                "path": "/post",
+                "httpMethod": "post",
+                "payload": {
+                    "json": {
+                        "mastodonhost": "https://bonn.social",
+                        "token": "YOUR_TOKEN",
+                        "caption": "YOUR_CAPTION",
+                        "imgurl": "https://nodejs.org/static/legacy/images/logo.png"    
+                    }
+                }
+            }
+        }
+    ]
+}

@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: 'AWS::Serverless-2016-10-31'
-Description: An AWS Lambda application that calls the Lambda API.
+Description: A service that posts images with caption on a Mastodon instance.
 Resources:
   api:
     Type: AWS::Serverless::Api
@@ -14,7 +14,7 @@ Resources:
       Handler: index.handler
       Runtime: nodejs12.x
       CodeUri: function/.
-      Description: Call the AWS Lambda API
+      Description: Post to Mastodon instance
       Timeout: 10
       # Function's execution role
       Policies:
@@ -27,5 +27,5 @@ Resources:
           Type: Api
           Properties:
             RestApiId: !Ref api
-            Path: /
-            Method: GET
+            Path: /post
+            Method: POST

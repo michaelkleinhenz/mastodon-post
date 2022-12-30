@@ -2,4 +2,4 @@
 set -eo pipefail
 ARTIFACT_BUCKET=$(cat bucket-name.txt)
 aws cloudformation package --template-file template.yml --s3-bucket $ARTIFACT_BUCKET --output-template-file out.yml
-aws cloudformation deploy --template-file out.yml --stack-name nodejs-apig --capabilities CAPABILITY_NAMED_IAM
+aws cloudformation deploy --template-file out.yml --stack-name mastodonpost --capabilities CAPABILITY_NAMED_IAM
