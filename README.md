@@ -9,6 +9,15 @@ This function can be used with automation services like IFTTT to post images wit
  
  Licensed under the MIT License.
 
+# Text Handling
+
+Mastodon posts are limited to 500 characters. If the caption is longer than 500 characters, it will "smart shorten" the text:
+
+* remove all hashtags that are *not* contained in body text. Criteria is two or more sequential hashtags.
+* if the resulting body text still exceeds 500 characters, it is shortened to the end of the last sentence that fits (looking for '.').
+* if no '.' is found, the text is shortened to 500 characters and an ellipsis is added.
+* if the body text is shorter than 500 characters, hashtags are added back in until the length is approaching 500 characters.
+
 # Contents
 
 - `function` - The Lambda function.
