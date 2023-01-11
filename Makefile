@@ -19,3 +19,6 @@ test: ## test lambda function with data from testrequest.json
 	$(eval $@_REGION := $(shell aws configure get region))
 	@echo curl -X POST -H 'Content-Type: application/json' -d '@testrequest.json' https://$($@_APIID).execute-api.$($@_REGION).amazonaws.com/api/post -v
 
+unittest: ## run unit tests
+	@echo "running unit tests"
+	@npm test --prefix ./function
