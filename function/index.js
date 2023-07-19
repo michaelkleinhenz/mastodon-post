@@ -4,8 +4,26 @@
  * Licensed under the MIT License.
  */
 
+/*
+Sample REST request:
+  {
+    'context': 'mastodon', // mastodon, twitter, instagram, schedule
+    'postingHost': 'https://posting.host', // for IFTTT, this includes the token
+    'postingToken': '1234567890', // only used for Mastodon
+    'caption': 'This is a test caption',
+    'imageURL': 'https://image.url/image.png',
+    'postingTime': 1234567890  // epoch in seconds 
+  }
+*/
+
 const FormData = require('form-data');
 const axios = require('axios');
+const AWS = require('aws-sdk');
+
+const CONTEXT_INSTAGRAM = 'instagram';
+const CONTEXT_TWITTER = 'twitter';
+const CONTEXT_MASTODON = 'mastodon';
+const CONTEXT_SCHEDULER = 'schedule';
 
 const maxCaptionLength = 500;
 const hashTagOccurenceLimit = 2;
@@ -13,7 +31,75 @@ const filters = [
   { from: '@fizzblizz', to: '@Fizzblizz' },
 ];
 
-findHashtagStart = (text) => {
+const docClient = new AWS.DynamoDB.DocumentClient({
+  region: 'us-west-1'
+});
+
+var testMode = false;
+
+setTestMode = (mode) => {
+  testMode = mode;
+}
+
+function guid() {
+  return Math.random().toString(36).substring(2, 15) +
+      Math.random().toString(36).substring(2, 15);
+}
+
+const putScheduleDocument = (context, postingHost, postingToken, caption, imageURL, postingTime) => new Promise((resolve, reject) => {
+  return docClient.put({
+    TableName: 'scheduled-posts',
+    Item: {
+      id: guid(),
+      context: context,
+      postingHost: postingHost,
+      postingToken: postingToken,
+      caption: caption,
+      imageURL: imageURL,
+      postingTime: postingTime,
+    }
+  }).promise().then(() => {
+    console.log('successfully scheduled status update to database');
+    resolve();
+  }).catch((err) => {
+    console.log('error storing schedule document into database');
+    console.log(err);
+    reject(err);
+  });
+});
+
+const getScheduleDocumentsByTime = (context, postingTime) => new Promise((resolve, reject) => {
+  return docClient.query({
+    TableName: 'scheduled-posts',
+    IndexName: 'context-index',
+    KeyConditionExpression: 'context = :platformValue',
+    FilterExpression: 'postingTime <= :postingTimeValue',
+    ExpressionAttributeValues: { ':platformValue': context, ':postingTimeValue': postingTime }
+  }).promise().then((data) => {
+    resolve(data);
+  }).catch((err) => {
+    console.log('error getting schedule document from database');
+    console.log(err);
+    reject(err);
+  });
+});
+
+const deleteScheduleDocument = (id) => new Promise((resolve, reject) => {
+  return docClient.delete({
+    TableName: 'scheduled-posts',
+    Key: {
+      id: id
+    }
+  }).promise().then((data) => {
+    resolve(data);
+  }).catch((err) => {
+    console.log('error deleting schedule document from database');
+    console.log(err);
+    reject(err);
+  });
+});
+
+const findHashtagStart = (text) => {
   if (!text) return -1;
   const words = text.split(' ');
   let idx = 0;
@@ -24,40 +110,40 @@ findHashtagStart = (text) => {
       hashtagCount++;
       if (hashtagCount == hashTagOccurenceLimit) {
         return idx - previousWordLength - 1;
-      } 
+      }
     } else {
       hashtagCount = 0;
-    } 
+    }
     idx += words[i].length + 1;
     previousWordLength = words[i].length;
   }
   return idx;
 }
 
-extractCaptionBody = (text) => {
+const extractCaptionBody = (text) => {
   if (!text) return '';
   let hashtagStart = findHashtagStart(text);
   return text.substring(0, hashtagStart).trim()
 }
 
-extractHashTags = (text) => {
+const extractHashTags = (text) => {
   if (!text) return [];
   let hashtagStart = findHashtagStart(text);
   let hashtagText = text.substring(hashtagStart, text.length).trim()
   return hashtagText.match(/#[^\s#\.\;]*/gmi);
 };
 
-extractMentions = (text) => {
+const extractMentions = (text) => {
   if (!text) return [];
   return text.match(/@[^\s@]*/gmi);
 };
 
-removeTextElements = (text, elements) => {
+const removeTextElements = (text, elements) => {
   if (!text) return text;
   elements.forEach(element => {
     text = text.replace(element, '');
   });
-  return text.replace(/\s+/g,' ');
+  return text.replace(/\s+/g, ' ');
 }
 
 const filterCaption = (text) => {
@@ -68,21 +154,21 @@ const filterCaption = (text) => {
   return text;
 }
 
-shortenCaption = (text, maxLength) => {
+const shortenCaption = (text, maxLength) => {
   if (!text) return text;
   if (text.length <= maxLength) return text;
   // first parse caption
   let captionBody = filterCaption(extractCaptionBody(text));
   // if the body is already too long, force shorten it
   if (captionBody.length > maxLength) {
-    let shortenedText = captionBody.substring(0, maxLength-1);
+    let shortenedText = captionBody.substring(0, maxLength - 1);
     let lastDot = shortenedText.lastIndexOf('.');
     if (lastDot > 0) {
       let final = shortenedText.substring(0, lastDot) + '.';
       console.log('shortened caption by removing text after last dot, final length: ' + final.length);
       return final;
-    } 
-    let final = shortenedText.substring(0, maxLength-3) + '...';
+    }
+    let final = shortenedText.substring(0, maxLength - 3) + '...';
     console.log('shortened caption by force removing text, final length: ' + final.length)
     return final;
   }
@@ -98,11 +184,16 @@ shortenCaption = (text, maxLength) => {
   return captionBody;
 }
 
-const uploadImage = (mastodonURL, mastodonToken, imageUrl) => new Promise((resolve, reject) => {
+const uploadImageMastodon = (mastodonURL, mastodonToken, imageUrl) => new Promise((resolve, reject) => {
+  if (testMode) {
+    console.log('test mode, skipping image upload of ' + imageUrl + ' to mastodon instance ' + mastodonURL + ' with token ' + mastodonToken);
+    resolve('1234567890');
+    return;
+  };
   axios.get(imageUrl, { responseType: 'arraybuffer' }).then(async function (response) {
     console.log('got image with mime type ' + response.headers['content-type']);
     const formData = new FormData();
-    formData.append('file', response.data, {filename: 'image', contentType: response.headers['content-type']});
+    formData.append('file', response.data, { filename: 'image', contentType: response.headers['content-type'] });
     try {
       const res = await axios.post(mastodonURL + '/api/v2/media', formData, {
         headers: {
@@ -111,12 +202,12 @@ const uploadImage = (mastodonURL, mastodonToken, imageUrl) => new Promise((resol
         }
       });
       console.log('uploaded image to mastodon instance successful, id is ' + res.data.id);
-      resolve(res.data.id);      
-    } catch(error) {
+      resolve(res.data.id);
+    } catch (error) {
       console.log('failed to upload image to mastodon instance..');
       console.log(error);
       reject(error);
-    };  
+    };
   }).catch(function (error) {
     console.log('failed to fetch image from imageURL..');
     console.log(error);
@@ -124,7 +215,12 @@ const uploadImage = (mastodonURL, mastodonToken, imageUrl) => new Promise((resol
   });
 });
 
-const updateStatus = (mastodonURL, mastodonToken, caption, imageID) => new Promise(async (resolve, reject) => {
+const updateStatusMastodon = (mastodonURL, mastodonToken, caption, imageID) => new Promise(async (resolve, reject) => {
+  if (testMode) {
+    console.log('test mode, skipping status update to mastodon instance ' + mastodonURL + ' with token ' + mastodonToken + ' and image ID ' + imageID);
+    resolve();
+    return;
+  };
   console.log('updating status on mastodon instance..');
   const formData = new FormData();
   formData.append('status', caption);
@@ -139,22 +235,166 @@ const updateStatus = (mastodonURL, mastodonToken, caption, imageID) => new Promi
   resolve();
 });
 
+const updateStatusInstagram = (instagramIFTTUrl, caption, imageUrl) => new Promise(async (resolve, reject) => {
+  if (testMode) {
+    console.log('test mode, skipping status update to Instagram via IFTTT ' + instagramIFTTUrl + ' with caption ' + caption + ' and image URL ' + imageUrl);
+    resolve();
+    return;
+  };
+  console.log('updating status on Instagram via IFTTT..');
+  await axios.post(instagramIFTTUrl, {
+    'value1': caption,
+    'value2': imageUrl,
+    'value3': ''
+  }).catch(function (error) {
+    if (error.response) {
+      console.log('error querying IFTT for Instagram: ' + error.response.data + ' ' + error.response.status);
+    }
+    reject(error);
+    return;
+  });
+  console.log('updated Instgram status successful');
+  resolve();
+});
+
+const updateStatusTwitter = (twitterIFTTUrl, caption, imageUrl) => new Promise(async (resolve, reject) => {
+  if (testMode) {
+    console.log('test mode, skipping status update to Twitter via IFTTT ' + twitterIFTTUrl + ' with caption ' + caption + ' and image URL ' + imageUrl);
+    resolve();
+    return;
+  };
+  console.log('updating status on Twitter via IFTTT..');
+  await axios.post(twitterIFTTUrl, {
+    'value1': caption,
+    'value2': imageUrl,
+    'value3': ''
+  }).catch(function (error) {
+    if (error.response) {
+      console.log('error querying IFTT for Twitter: ' + error.response.data + ' ' + error.response.status);
+    }
+    reject(error);
+    return;
+  });
+  console.log('updated Twitter status successful');
+  resolve();
+});
+
+const scheduleStatusUpdate = (context, postingHost, postingToken, caption, imageURL, postingTime) => new Promise(async (resolve, reject) => {
+  console.log('scheduling status update..');
+  putScheduleDocument(context, postingHost, postingToken, caption, imageURL, postingTime).then(() => {
+    console.log('successfully scheduled status update');
+    resolve();
+  }).catch((err) => {
+    console.log('error storing schedule document');
+    console.log(err);
+    reject(err);
+  });
+});
+
+const updateScheduler = () => new Promise(async (resolve, reject) => {
+  console.log('updating scheduler..');
+  let result = { successfulCount: 0, failedCount: 0 };
+  let currentTime = Math.floor(Date.now() / 1000);
+  try {
+    await getScheduleDocumentsByTime(CONTEXT_MASTODON, currentTime).then(async (data) => {
+      let items = data.Items;
+      for (let i = 0; i < items.length; i++) {
+        console.log('running scheduler for Mastodon..');
+        try {
+          let imageID = await uploadImageMastodon(items[i].postingHost, items[i].postingToken, items[i].imageURL);
+          console.log('got mastodon image ID: ' + imageID);
+          let caption = shortenCaption(items[i].caption, maxCaptionLength);
+          await updateStatusMastodon(items[i].postingHost, items[i].postingToken, items[i].caption, imageID);
+        } catch (error) {
+          console.log('failed to update status on Mastodon instance..');
+          console.log(error);
+          result.failedCount++;
+          continue;
+        }
+        console.log('updated status on Mastodon instance successful');
+        await deleteScheduleDocument(items[i].id);
+        result.successfulCount++;
+      }
+    });
+    await getScheduleDocumentsByTime(CONTEXT_TWITTER, currentTime).then(async (data) => {
+      let items = data.Items;
+      for (let i = 0; i < items.length; i++) {
+        console.log('running scheduler for Twitter..');
+        try {
+          await updateStatusTwitter(items[i].postingHost, items[i].caption, items[i].imageURL);
+        } catch (error) {
+          console.log('failed to update status on Twitter..');
+          console.log(error);
+          result.failedCount++;
+          continue;
+        }
+        console.log('updated status on Twitter successful');
+        await deleteScheduleDocument(items[i].id);
+        result.successfulCount++;
+      }
+    });
+    await getScheduleDocumentsByTime(CONTEXT_INSTAGRAM, currentTime).then(async (data) => {
+      let items = data.Items;
+      for (let i = 0; i < items.length; i++) {
+        console.log('running scheduler for Instagram..');
+        try {
+          await updateStatusInstagram(items[i].postingHost, items[i].caption, items[i].imageURL);
+        } catch (error) {
+          console.log('failed to update status on Instagram..');
+          console.log(error);
+          result.failedCount++;
+          continue;
+        }
+        console.log('updated status on Instagram successful');
+        await deleteScheduleDocument(items[i].id);
+        result.successfulCount++;
+      }
+      resolve(result);
+    });
+  } catch (error) {
+    console.log('error getting schedule documents from database');
+    console.log(err);
+    reject(err);
+  }
+});
+
 exports.handler = async function (event, context) {
-  let body = JSON.parse(event.body);
+  console.log('running scheduler..');
+  console.log(event);
+  var body;
+  if (event.body)
+    body = JSON.parse(event.body);
+  else
+    body = event;
   const response = {
     statusCode: 200,
     body: ''
   };
   try {
-    let imageID = await uploadImage(body.mastodonhost, body.token, body.imgurl);
-    console.log('got image ID: ' + imageID);
-    let caption = shortenCaption(body.caption, maxCaptionLength);
-    await updateStatus(body.mastodonhost, body.token, caption, imageID);  
-  } catch(error) {
-    console.log('failed to run mastodon-post..');
+    switch (body.context) {
+      case CONTEXT_MASTODON:
+      case CONTEXT_TWITTER:
+      case CONTEXT_INSTAGRAM:
+        console.log('scheduling status update for ' + body.context + '..');
+        await scheduleStatusUpdate(body.context, body.postingHost, body.postingToken, body.caption, body.imageURL, body.postingTime);
+        console.log('scheduling status update successful');
+        return response;
+      case CONTEXT_SCHEDULER:
+        console.log('running scheduler, checking schedules..');
+        let result = await updateScheduler();
+        console.log('update of schedules, successfully posted ' + result.successfulCount + ', non-successful ' + result.failedCount);
+        return response;
+      default:
+        console.log('unknown context: ' + body.context);
+        response.statusCode = 404;
+        response.body = 'unknown context';
+        return response;
+    }
+  } catch (error) {
+    console.log('failed to run scheduler..');
     console.log(error);
     response.statusCode = 501;
-    response.body = 'failed to run mastodon-post';
+    response.body = 'failed to run scheduler';
+    return response;
   }
-  return response;
 }
