@@ -1,5 +1,5 @@
 
-# Post Image to Mastodon
+# Schedule Postings to Mastodon, Twitter and Instagram
 
 This is a simple AWS Lambda function that posts an image with caption to Mastodon, Instagram (via IFTTT) or Twitter (via IFTTT). It is intended to be used with AWS API Gateway and AWS S3. It provides this functionality in one single API call. The Mastodon API itself requires two seperate API calls to post an image with caption (one to upload the image and one to post the image with caption).
 
