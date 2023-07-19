@@ -1,13 +1,13 @@
 
 # Post Image to Mastodon
 
-This is a simple AWS Lambda function that posts an image with caption to Mastodon. It is intended to be used with AWS API Gateway and AWS S3. It provides this functionality in one single API call. The Mastodon API itself requires two seperate API calls to post an image with caption (one to upload the image and one to post the image with caption).
+This is a simple AWS Lambda function that posts an image with caption to Mastodon, Instagram (via IFTTT) or Twitter (via IFTTT). It is intended to be used with AWS API Gateway and AWS S3. It provides this functionality in one single API call. The Mastodon API itself requires two seperate API calls to post an image with caption (one to upload the image and one to post the image with caption).
 
-This function can be used with automation services like IFTTT to post images with caption to Mastodon, enabling easy crossposing from Twitter or Instagram.
+This function can be used with automation services like IFTTT to post images with caption to Mastodon, Twitter or Instagram.
 
- Copyright (c) 2022 Michael Kleinhenz <michael@kleinhenz.net>.
+Copyright (c) 2023 Michael Kleinhenz <michael@kleinhenz.net>.
  
- Licensed under the MIT License.
+Licensed under the MIT License.
 
 # Text Handling
 
@@ -99,11 +99,21 @@ The function expects a JSON POST request with the following body:
 
 ```
 {
-  "mastodonhost": "https://your.mastodon.instance",
-  "token": "YOUR_TOKEN",
-  "caption": "YOUR_TEXT_CAPTION",
-  "imgurl": "IMAGE_URL"
+ 'context': 'mastodon',
+    'context': 'mastodon',
+    'postingHost': 'https://your.mastodon.instance',
+    'postingToken': 'YOUR_TOKEN',
+    'caption': 'YOUR_TEXT_CAPTION',
+    'imageURL': 'IMAGE_URL',
+    'postingTime': EPOCH_TIME_IN_SECONDS,      
 }
 ```
 
-Make sure the `mastodonhost` is the full URL of your Mastodon instance, including the protocol (https://). The `token` is the access token of your Mastodon account. You can generate one in the Mastodon web interface under Settings > Development > New Application. The `caption` is the text that will be posted with the image. The `imgurl` is the URL of the image that will be posted. The image must be publicly accessible.
+Make sure the `postingHost` is the full URL of your Mastodon instance or IFTTT service (with key embedded in the URL), including the protocol (https://). The `postingToken` is the access token of your Mastodon account. You can generate one in the Mastodon web interface under Settings > Development > New Application. The `caption` is the text that will be posted with the image. The `imageURL` is the URL of the image that will be posted. The image must be publicly accessible. The `postingTime` is the time the post should be published, in epoch seconds. 
+
+# Setting up the Database and Scheduler
+
+The function stores posting requests in a DynamoDB table. The table is created by the CloudFormation template. To schedule the function to run periodically, you can use the AWS EventBridge service. See https://docs.aws.amazon.com/AmazonCloudWatch/latest/events/RunLambdaSchedule.html for details on the scheduler. The service needs to be called with the context `schedule` to run the scheduler action on the stored posting requests, see `test.js` for an example.
+
+When setting up the database, create a table `scheduled-posts` on DynamoDB and an index `context-index` on the `context` attribute.
+
