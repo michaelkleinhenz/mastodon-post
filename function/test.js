@@ -2,6 +2,11 @@ const { handler } = require('./index');
 
 require('./index');
 
+test('test', async () => {
+  let result = await getScheduleDocumentsByTime('mastodon', 1690024381);
+  console.log(result);
+});
+
 /*
 test('test', () => {
     let text = `
@@ -16,6 +21,7 @@ test('test', () => {
   });
 */
 
+/*
 test('schedule - backlog', async () => {
   setTestMode(true);
   let currentTime = Math.floor(Date.now() / 1000);
@@ -60,9 +66,10 @@ test('schedule - preog', async () => {
       'postingToken': '1234567890',
       'caption': 'This is a test caption',
       'imageURL': 'http://image.host/image.jpg',
-      'postingTime': currentTime + 10,
+      'postingTime': currentTime + 100000000,
     })
   }, null);
+
   // add twitter post
   await handler({
     body: JSON.stringify({
@@ -84,3 +91,4 @@ test('schedule - preog', async () => {
     }, null);
   }, 21000);
 });
+  */

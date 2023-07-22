@@ -68,19 +68,29 @@ const putScheduleDocument = (context, postingHost, postingToken, caption, imageU
   });
 });
 
-const getScheduleDocumentsByTime = (context, postingTime) => new Promise((resolve, reject) => {
+getScheduleDocumentsByTime = (context, postingTime) => new Promise((resolve, reject) => {
+  console.log('getting schedule documents from database for context ' + context + ' and posting time ' + postingTime);
   return docClient.query({
     TableName: 'scheduled-posts',
     IndexName: 'context-index',
     KeyConditionExpression: 'context = :platformValue',
-    FilterExpression: 'postingTime <= :postingTimeValue',
-    ExpressionAttributeValues: { ':platformValue': context, ':postingTimeValue': postingTime }
+    ExpressionAttributeValues: { ':platformValue': context }
   }).promise().then((data) => {
+    // the posting time is stored as a string in the database, so we need to do manual filtering here
+    // TODO: switch to a number type in the database, use filterExpression here:
+    // FilterExpression: 'postingTime <= :postingTimeValue'
+    console.log('getting schedule documents from database, found records: ' + data.Items.length);
+    console.log('filtering records by postingTime ' + postingTime);
+    console.log(data);
+    data.Items = data.Items.filter(item => parseInt(item.postingTime) <= postingTime);
     resolve(data);
   }).catch((err) => {
     console.log('error getting schedule document from database');
-    console.log(err);
-    reject(err);
+    if (err) {
+      console.log(err);
+      reject(err);  
+    } else 
+      reject('unknown error');
   });
 });
 
@@ -296,6 +306,7 @@ const updateScheduler = () => new Promise(async (resolve, reject) => {
   let result = { successfulCount: 0, failedCount: 0 };
   let currentTime = Math.floor(Date.now() / 1000);
   try {
+    console.log('getting schedule documents from database for Mastodon..');
     await getScheduleDocumentsByTime(CONTEXT_MASTODON, currentTime).then(async (data) => {
       let items = data.Items;
       for (let i = 0; i < items.length; i++) {
@@ -316,6 +327,7 @@ const updateScheduler = () => new Promise(async (resolve, reject) => {
         result.successfulCount++;
       }
     });
+    console.log('getting schedule documents from database for Twitter..');
     await getScheduleDocumentsByTime(CONTEXT_TWITTER, currentTime).then(async (data) => {
       let items = data.Items;
       for (let i = 0; i < items.length; i++) {
@@ -333,6 +345,7 @@ const updateScheduler = () => new Promise(async (resolve, reject) => {
         result.successfulCount++;
       }
     });
+    console.log('getting schedule documents from database for Instagram..');
     await getScheduleDocumentsByTime(CONTEXT_INSTAGRAM, currentTime).then(async (data) => {
       let items = data.Items;
       for (let i = 0; i < items.length; i++) {
@@ -351,7 +364,7 @@ const updateScheduler = () => new Promise(async (resolve, reject) => {
       }
       resolve(result);
     });
-  } catch (error) {
+  } catch (err) {
     console.log('error getting schedule documents from database');
     console.log(err);
     reject(err);
