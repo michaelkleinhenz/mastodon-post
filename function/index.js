@@ -23,6 +23,7 @@ const AWS = require('aws-sdk');
 const CONTEXT_INSTAGRAM = 'instagram';
 const CONTEXT_TWITTER = 'twitter';
 const CONTEXT_MASTODON = 'mastodon';
+const CONTEXT_BLUESKY = 'bluesky';
 const CONTEXT_SCHEDULER = 'schedule';
 
 const maxCaptionLength = 500;
@@ -43,7 +44,7 @@ setTestMode = (mode) => {
 
 function guid() {
   return Math.random().toString(36).substring(2, 15) +
-      Math.random().toString(36).substring(2, 15);
+    Math.random().toString(36).substring(2, 15);
 }
 
 const putScheduleDocument = (context, postingHost, postingToken, caption, imageURL, postingTime) => new Promise((resolve, reject) => {
@@ -88,8 +89,8 @@ getScheduleDocumentsByTime = (context, postingTime) => new Promise((resolve, rej
     console.log('error getting schedule document from database');
     if (err) {
       console.log(err);
-      reject(err);  
-    } else 
+      reject(err);
+    } else
       reject('unknown error');
   });
 });
@@ -289,6 +290,111 @@ const updateStatusTwitter = (twitterIFTTUrl, caption, imageUrl) => new Promise(a
   resolve();
 });
 
+const uploadImageBluesky = (bskyHandle, bskyPassword, imageUrl) => new Promise(async (resolve, reject) => {
+  if (testMode) {
+    console.log('test mode, skipping image upload of ' + imageUrl + ' to Bluesky');
+    resolve('1234567890');
+    return;
+  };
+  console.log('obtaining Bluesky token..');
+  const res = await axios.post('https://bsky.social/xrpc/com.atproto.server.createSession', {
+    'identifier': bskyHandle,
+    'password': bskyPassword
+  }).catch(function (error) {
+    if (error.response) {
+      console.log('error querying Bluesky session endpoint: ' + error.response.data + ' ' + error.response.status);
+    }
+    reject(error);
+    return;
+  });
+  const sessionToken = res.data.accessJwt;
+  axios.get(imageUrl, { responseType: 'arraybuffer' }).then(async function (response) {
+    console.log('got image with mime type ' + response.headers['content-type']);
+    try {
+      const res = await axios.post('https://bsky.social/xrpc/com.atproto.repo.uploadBlob', response.data, {
+        headers: {
+          'Content-Type': response.headers['content-type'],
+          'Authorization': 'Bearer ' + sessionToken,
+        }
+      });
+      console.log('uploaded image to Bluesky successful, id is ' + res.data.blob.ref['$link']);
+      resolve({
+        'linkID': res.data.blob.ref['$link'],
+        'mimeType': res.data.blob['mimeType'],
+        'size': res.data.blob['size']
+      });
+    } catch (error) {
+      console.log('failed to upload image to Bluesky..');
+      console.log(error);
+      reject(error);
+    };
+  }).catch(function (error) {
+    console.log('failed to fetch image from imageURL..');
+    console.log(error);
+    reject(error);
+  });
+});
+
+const updateStatusBluesky = (bskyHandle, bskyPassword, caption, imageLinkID, mimeType, size) => new Promise(async (resolve, reject) => {
+  if (testMode) {
+    console.log('test mode, skipping status update to Bluesky with caption ' + caption + ' and image URL ' + imageUrl);
+    resolve();
+    return;
+  };
+  console.log('obtaining Bluesky token..');
+  const res = await axios.post('https://bsky.social/xrpc/com.atproto.server.createSession', {
+    'identifier': bskyHandle,
+    'password': bskyPassword
+  }).catch(function (error) {
+    if (error.response) {
+      console.log('error querying Bluesky session endpoint: ' + error.response.data + ' ' + error.response.status);
+    }
+    reject(error);
+    return;
+  });
+  const sessionToken = res.data.accessJwt;
+  const sessionDid = res.data.did;
+  console.log('updating status on Bluesky via IFTTT..');
+  await axios.post('https://bsky.social/xrpc/com.atproto.repo.createRecord', {
+    'repo': sessionDid,
+    'collection': "app.bsky.feed.post",
+    'record': {
+      '$type': 'app.bsky.feed.post',
+      'text': caption,
+      'createdAt': new Date().toISOString(),
+      'embed': {
+        '$type': 'app.bsky.embed.images',
+        'images': [
+          {
+            'alt': '',
+            'image': {
+              '$type': 'blob',
+              'ref': {
+                '$link': imageLinkID
+              },
+              'mimeType': mimeType,
+              'size': size
+            }
+          }
+        ]
+      }
+    }
+  }, {
+    headers: {
+      'Authorization': 'Bearer ' + sessionToken
+    }
+  }).catch(function (error) {
+    if (error.response) {
+      console.log('error querying Bluesky create endpoint: ' + JSON.stringify(error.response.data) + ' ' + error.response.status);
+    }
+    reject(error);
+    return;
+  });
+  console.log('updated Bluesky status successful');
+  resolve();
+});
+
+
 const scheduleStatusUpdate = (context, postingHost, postingToken, caption, imageURL, postingTime) => new Promise(async (resolve, reject) => {
   console.log('scheduling status update..');
   putScheduleDocument(context, postingHost, postingToken, caption, imageURL, postingTime).then(() => {
@@ -306,6 +412,26 @@ const updateScheduler = () => new Promise(async (resolve, reject) => {
   let result = { successfulCount: 0, failedCount: 0 };
   let currentTime = Math.floor(Date.now() / 1000);
   try {
+    console.log('getting schedule documents from database for Bluesky..');
+    await getScheduleDocumentsByTime(CONTEXT_BLUESKY, currentTime).then(async (data) => {
+      let items = data.Items;
+      for (let i = 0; i < items.length; i++) {
+        console.log('running scheduler for Bluesky..');
+        try {
+          let imageMeta = await uploadImageBluesky(items[i].postingHost, items[i].postingToken, items[i].imageURL);
+          console.log('got Bluesky image ID: ' + imageID);
+          await updateStatusBluesky(items[i].postingHost, items[i].postingToken, items[i].caption, imageMeta.linkID, imageMeta.mimeType, imageMeta.size);
+        } catch (error) {
+          console.log('failed to update status on Bluesky instance..');
+          console.log(error);
+          result.failedCount++;
+          continue;
+        }
+        console.log('updated status on Bluesky instance successful');
+        await deleteScheduleDocument(items[i].id);
+        result.successfulCount++;
+      }
+    });
     console.log('getting schedule documents from database for Mastodon..');
     await getScheduleDocumentsByTime(CONTEXT_MASTODON, currentTime).then(async (data) => {
       let items = data.Items;

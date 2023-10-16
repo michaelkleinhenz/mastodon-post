@@ -1,11 +1,20 @@
-const { handler } = require('./index');
+const { handler,updateStatusBluesky, uploadImageBluesky  } = require('./index');
 
 require('./index');
 
 test('test', async () => {
+  let resultImage = await uploadImageBluesky('tabulaludo.bsky.social', 'xxxxxx', 'https://drive.google.com/uc?id=1y3UVaB2zQSKI1w0SD2Dm36n71gtGdON8');
+  console.log(resultImage);
+  let result = await updateStatusBluesky('tabulaludo.bsky.social', 'xxxxxx', 'Hallo Welt!', resultImage.linkID, resultImage.mimeType, resultImage.size);
+  console.log(result);
+});
+
+/*
+test('test', async () => {
   let result = await getScheduleDocumentsByTime('mastodon', 1690024381);
   console.log(result);
 });
+*/
 
 /*
 test('test', () => {
