@@ -514,7 +514,8 @@ exports.handler = async function (event, context) {
       case CONTEXT_MASTODON:
       case CONTEXT_TWITTER:
       case CONTEXT_INSTAGRAM:
-        console.log('scheduling status update for ' + body.context + '..');
+      case CONTEXT_BLUESKY:
+          console.log('scheduling status update for ' + body.context + '..');
         await scheduleStatusUpdate(body.context, body.postingHost, body.postingToken, body.caption, body.imageURL, body.postingTime);
         console.log('scheduling status update successful');
         return response;
