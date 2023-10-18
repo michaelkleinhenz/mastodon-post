@@ -419,7 +419,7 @@ const updateScheduler = () => new Promise(async (resolve, reject) => {
         console.log('running scheduler for Bluesky..');
         try {
           let imageMeta = await uploadImageBluesky(items[i].postingHost, items[i].postingToken, items[i].imageURL);
-          console.log('got Bluesky image ID: ' + imageID);
+          console.log('got Bluesky image ID: ' + imageMeta.linkID);
           await updateStatusBluesky(items[i].postingHost, items[i].postingToken, items[i].caption, imageMeta.linkID, imageMeta.mimeType, imageMeta.size);
         } catch (error) {
           console.log('failed to update status on Bluesky instance..');
